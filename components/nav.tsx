@@ -1,4 +1,4 @@
-\"use client\"
+"use client"
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
@@ -11,9 +11,10 @@ export function Nav() {
   const pathname = usePathname()
   const { address } = useAccount()
   const { data: session } = useQuery({
-    queryKey: ['session'],
+    queryKey: ['session', address],
     queryFn: () => getApi(address).getSession(),
-    staleTime: 10_000
+    staleTime: 10_000,
+    retry: 1
   })
   const isAdmin = !!session?.roles?.includes('admin')
   const items = [
@@ -23,19 +24,19 @@ export function Nav() {
     { href: '/events/demo', label: 'Event' }
   ]
   return (
-    <div className=\"border-b\">
-      <div className=\"mx-auto max-w-6xl px-4 py-3 flex items-center justify-between\">
-        <Link href=\"/dashboard\" className=\"font-semibold\">
+    <div className="border-b">
+      <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+        <Link href="/dashboard" className="font-semibold">
           GuildPass
         </Link>
-        <nav className=\"flex items-center gap-4\">
+        <nav className="flex items-center gap-4">
           {items.map((it) => (
             <Link
               key={it.href}
               href={it.href}
               className={cn(
                 'text-sm text-muted-foreground hover:text-foreground',
-                pathname.startsWith(it.href) && 'text-foreground font-medium'
+                pathname?.startsWith(it.href) && 'text-foreground font-medium'
               )}
             >
               {it.label}
