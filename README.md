@@ -110,6 +110,8 @@ npm run build      # Production build
 npm run start      # Start production server (after build)
 npm run lint       # Lint via Next.js ESLint config
 npm run typecheck  # TypeScript type checking
+npm run sync-types # Compile test/fixtures/openapi.json into lib/api/types.ts
+npm run check-types # Validate that types in lib/api/types.ts match the schema
 ```
 
 ---
@@ -123,13 +125,15 @@ npm run typecheck  # TypeScript type checking
 | `lib/api/*` | API layer (`getApi(address?, token?)` switches mock ↔ live) |
 | `lib/api/live.ts` | Live integration with `guildpass-core`; `AuthError` for 401 handling |
 | `lib/api/mock.ts` | In-memory mock; simulates SIWE endpoints without real signatures |
-| `lib/api/types.ts` | Shared TypeScript types incl. `SiweAuthSession`, `SiweAuthState` |
+| `lib/api/types.ts` | Shared TypeScript types (auto-generated from `openapi.json`) |
 | `lib/session.ts` | `sessionStorage` helpers for SIWE token persistence |
 | `components/ui/*` | Minimal shadcn-style UI primitives |
 | `components/gated.tsx` | Access-gate component |
 | `components/admin-guard.tsx` | 3-layer admin guard (wallet → SIWE → role) with `SiwePrompt` |
 | `components/wallet/connect-button.tsx` | 3-state button (disconnected / connected / authenticated) |
 | `components/nav.tsx` | Navigation bar |
+| `test/fixtures/openapi.json` | OpenAPI schema contract fixture representing core API models |
+| `scripts/sync-api-types.js` | Zero-dependency compiler converting openapi.json to typescript types |
 
 ---
 

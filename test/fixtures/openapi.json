@@ -1,0 +1,119 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "GuildPass Access API",
+    "description": "API contract for the GuildPass core access API, used to sync and validate frontend types.",
+    "version": "1.0.0"
+  },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "Role": {
+        "type": "string",
+        "enum": ["member", "moderator", "admin"]
+      },
+      "MembershipTier": {
+        "type": "string",
+        "enum": ["free", "standard", "pro"]
+      },
+      "Community": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "tiers": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MembershipTier" }
+          }
+        },
+        "required": ["id", "name", "tiers"]
+      },
+      "Membership": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "string" },
+          "tier": { "$ref": "#/components/schemas/MembershipTier" },
+          "active": { "type": "boolean" },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["address", "tier", "active"]
+      },
+      "MemberProfile": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "string" },
+          "displayName": { "type": "string" },
+          "bio": { "type": "string" },
+          "badges": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "required": ["address", "badges"]
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "string" },
+          "roles": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Role" }
+          },
+          "membership": { "$ref": "#/components/schemas/Membership" },
+          "community": { "$ref": "#/components/schemas/Community" }
+        },
+        "required": ["roles"]
+      },
+      "Resource": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "minTier": { "$ref": "#/components/schemas/MembershipTier" },
+          "roles": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Role" }
+          }
+        },
+        "required": ["id", "title"]
+      },
+      "AccessPolicy": {
+        "type": "object",
+        "properties": {
+          "resourceId": { "type": "string" },
+          "minTier": { "$ref": "#/components/schemas/MembershipTier" },
+          "roles": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Role" }
+          }
+        },
+        "required": ["resourceId"]
+      },
+      "MemberRow": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "string" },
+          "roles": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Role" }
+          },
+          "tier": { "$ref": "#/components/schemas/MembershipTier" },
+          "active": { "type": "boolean" }
+        },
+        "required": ["address", "roles", "tier", "active"]
+      },
+      "SiweAuthSession": {
+        "type": "object",
+        "properties": {
+          "isAuthenticated": { "type": "boolean", "enum": [true] },
+          "token": { "type": "string" },
+          "address": { "type": "string" },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["isAuthenticated", "token", "address", "expiresAt"]
+      }
+    }
+  }
+}
