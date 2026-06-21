@@ -1,45 +1,31 @@
 /**
- * lib/api/live.ts
- *
- * Live integration with guildpass-core access-api.
- *
- * Routes: all endpoints now target the current guildpass-core /v1/* structure.
- * A lightweight response-mapping layer converts backend shapes into the
- * frontend AccessApi interface so the rest of the app stays decoupled from
- * backend internals.
- *
- * SIWE:
- *  - Constructor accepts an optional `token` (Bearer token from SIWE verify).
- *  - Read-only methods remain unauthenticated (no header needed).
- *  - Mutation methods (assignRole, updatePolicy) send `Authorization: Bearer <token>`.
- *  - Throws `AuthError` (HTTP 401) so callers can detect an expired session and
- *    prompt the user to re-authenticate.
- *  - getNonce / siweVerify / siweLogout hit the SIWE endpoints on the backend.
- */
+* lib/api/live.ts
+*
+* Live integration with guildpass-core access-api.
+*/
 
 import {
-  AccessApi,
-  AccessPolicy,
-  Community,
-  MemberProfile,
-  MemberRow,
-  Membership,
-  Resource,
-  Role,
-  Session,
-  SiweAuthSession,
-  // Raw backend shapes used for response mapping
-  BackendSession,
-  BackendMember,
-  BackendResource,
-  BackendPolicy,
+    AccessApi,
+AccessPolicy,
+Community,
+MemberProfile,
+MemberRow,
+Membership,
+Resource,
+Role,
+Session,
+SiweAuthSession,
+BackendSession,
+BackendMember,
+BackendResource,
+BackendPolicy,
 } from './types'
 
 const BASE = process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:4000'
 
 /** Thrown when the backend returns HTTP 401 (expired / invalid session token). */
 export class AuthError extends Error {
-  constructor() {
+constructor() {
     super('Session expired. Please sign in again.')
     this.name = 'AuthError'
   }
@@ -61,9 +47,11 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
+
   if (res.status === 401) {
     throw new AuthError()
   }
+
   if (!res.ok) {
     let serverMessage: string | undefined
     try {
@@ -75,15 +63,27 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {}
     throw new ApiError(res.status, res.statusText, serverMessage)
   }
+
+  // Handle 204 No Content (or 205 Reset Content)
+  if (res.status === 204 || res.status === 205) {
+    return {} as T
+  }
+
   return res.json() as Promise<T>
 }
 
 // ── Response mappers ──────────────────────────────────────────────────────────
-// These convert backend shapes into the frontend types defined in types.ts.
-// If the backend ever aligns its field names with the frontend types, the
-// mapper becomes a no-op and can be removed without touching call sites.
 
 function mapCommunity(raw: BackendSession['community']): Community {
+  if (!raw) {
+    return {
+      id: 'unknown',
+      name: 'Unknown Community',
+      description: '',
+      tiers: ['free']
+    };
+  }
+
   return {
     id: raw.id,
     name: raw.name,
@@ -94,7 +94,7 @@ function mapCommunity(raw: BackendSession['community']): Community {
 
 function mapMembership(raw: BackendMember): Membership {
   return {
-    address: raw.address ?? raw.wallet_address,
+    address: raw.address ?? raw.wallet_address ?? '',
     tier: raw.tier ?? raw.membership_tier ?? 'free',
     active: raw.active ?? raw.is_active ?? false,
     expiresAt: raw.expiresAt ?? raw.expires_at,
@@ -104,7 +104,7 @@ function mapMembership(raw: BackendMember): Membership {
 function mapMemberProfile(raw: BackendMember, address: string): MemberProfile {
   return {
     address,
-    displayName: raw.displayName ?? raw.display_name ?? raw.username,
+    displayName: raw.displayName ?? raw.display_name ?? raw.username ?? 'Unknown',
     bio: raw.bio,
     badges: raw.badges ?? [],
   }
@@ -112,7 +112,7 @@ function mapMemberProfile(raw: BackendMember, address: string): MemberProfile {
 
 function mapMemberRow(raw: BackendMember): MemberRow {
   return {
-    address: raw.address ?? raw.wallet_address,
+    address: raw.address ?? raw.wallet_address ?? '',
     roles: raw.roles ?? [],
     tier: raw.tier ?? raw.membership_tier ?? 'free',
     active: raw.active ?? raw.is_active ?? false,
@@ -121,25 +121,25 @@ function mapMemberRow(raw: BackendMember): MemberRow {
 
 function mapResource(raw: BackendResource): Resource {
   return {
-    id: raw.id,
-    title: raw.title ?? raw.name,
+    id: raw.id ?? '',
+    title: raw.title ?? raw.name ?? 'Untitled',
     description: raw.description,
     minTier: raw.minTier ?? raw.min_tier,
-    roles: raw.roles,
+    roles: raw.roles ?? [],
   }
 }
 
 function mapPolicy(raw: BackendPolicy): AccessPolicy {
   return {
-    resourceId: raw.resourceId ?? raw.resource_id,
-    minTier: raw.minTier ?? raw.min_tier,
-    roles: raw.roles,
+    resourceId: raw.resourceId ?? raw.resource_id ?? '',
+    minTier: raw.minTier ?? raw.min_tier ?? 'free',
+    roles: raw.roles ?? [],
   }
 }
 
 function mapSession(raw: BackendSession): Session {
   return {
-    address: raw.address ?? raw.wallet_address,
+    address: raw.address ?? raw.wallet_address ?? '',
     roles: raw.roles ?? [],
     membership: raw.membership ? mapMembership(raw.membership as BackendMember) : undefined,
     community: raw.community ? mapCommunity(raw.community) : undefined,
@@ -149,16 +149,11 @@ function mapSession(raw: BackendSession): Session {
 // ── LiveAccessApi ─────────────────────────────────────────────────────────────
 
 export class LiveAccessApi implements AccessApi {
-  /**
-   * @param address  Connected wallet address (used for read-only session queries)
-   * @param token    SIWE session token — required for admin mutations
-   */
   constructor(
     private readonly address?: string,
     private readonly token?: string,
   ) {}
 
-  /** Returns headers including the Bearer token when one is available. */
   private authHeaders(): HeadersInit {
     if (!this.token) return {}
     return { Authorization: `Bearer ${this.token}` }
@@ -180,15 +175,15 @@ export class LiveAccessApi implements AccessApi {
   async getMembership(address: string): Promise<Membership | null> {
     const raw = await getJson<BackendMember | null>(
       `/v1/members/${encodeURIComponent(address)}/membership`,
-    )
-    return raw ? mapMembership(raw) : null
+)
+return raw ? mapMembership(raw) : null
   }
 
   async getProfile(address: string): Promise<MemberProfile | null> {
     const raw = await getJson<BackendMember | null>(
       `/v1/members/${encodeURIComponent(address)}/profile`,
     )
-    return raw ? mapMemberProfile(raw, address) : null
+return raw ? mapMemberProfile(raw, address) : null
   }
 
   async listMembers(): Promise<MemberRow[]> {
@@ -230,10 +225,6 @@ export class LiveAccessApi implements AccessApi {
 
   // ── SIWE authentication ────────────────────────────────────────────────────
 
-  /**
-   * Fetch a one-time nonce for the address.
-   * Backend endpoint: POST /v1/auth/siwe/nonce  { address }
-   */
   async getNonce(address: string): Promise<string> {
     const data = await getJson<{ nonce: string }>('/v1/auth/siwe/nonce', {
       method: 'POST',
@@ -242,11 +233,6 @@ export class LiveAccessApi implements AccessApi {
     return data.nonce
   }
 
-  /**
-   * Submit the signed EIP-4361 message to the backend for verification.
-   * Backend endpoint: POST /v1/auth/siwe/verify  { message, signature }
-   * Response: { token, address, expiresAt }
-   */
   async siweVerify(message: string, signature: string): Promise<SiweAuthSession> {
     const data = await getJson<{ token: string; address: string; expiresAt: string }>(
       '/v1/auth/siwe/verify',
@@ -254,15 +240,11 @@ export class LiveAccessApi implements AccessApi {
         method: 'POST',
         body: JSON.stringify({ message, signature }),
       },
-    )
-    return { isAuthenticated: true, ...data }
-  }
+)
+return { isAuthenticated: true, ...data }
+}
 
-  /**
-   * Invalidate the session on the backend.
-   * Backend endpoint: POST /v1/auth/siwe/logout
-   */
-  async siweLogout(token: string): Promise<void> {
+async siweLogout(token: string): Promise<void> {
     await getJson<void>('/v1/auth/siwe/logout', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
