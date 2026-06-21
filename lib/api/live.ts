@@ -98,7 +98,11 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
 // If the backend ever aligns its field names with the frontend types, the
 // mapper becomes a no-op and can be removed without touching call sites.
 
-function mapCommunity(raw: any): Community {
+function mapCommunity(raw: BackendSession['community']): Community {
+  if (!raw) {
+    throw new ApiError(500, 'Invalid API response', 'Missing community')
+  }
+
   return {
     id: raw?.id ?? '',
     name: raw?.name ?? '',
@@ -107,12 +111,19 @@ function mapCommunity(raw: any): Community {
   }
 }
 
-function mapMembership(raw: any): Membership {
+function requiredString(value: string | undefined, field: string): string {
+  if (!value) {
+    throw new ApiError(500, 'Invalid API response', `Missing ${field}`)
+  }
+  return value
+}
+
+function mapMembership(raw: BackendMember): Membership {
   return {
-    address: raw?.address ?? raw?.wallet_address ?? '',
-    tier: raw?.tier ?? raw?.membership_tier ?? 'free',
-    active: raw?.active ?? raw?.is_active ?? false,
-    expiresAt: raw?.expiresAt ?? raw?.expires_at,
+    address: requiredString(raw.address ?? raw.wallet_address, 'member address'),
+    tier: raw.tier ?? raw.membership_tier ?? 'free',
+    active: raw.active ?? raw.is_active ?? false,
+    expiresAt: raw.expiresAt ?? raw.expires_at,
   }
 }
 
@@ -127,28 +138,28 @@ function mapMemberProfile(raw: any, address: string): MemberProfile {
 
 function mapMemberRow(raw: any): MemberRow {
   return {
-    address: raw?.address ?? raw?.wallet_address ?? '',
-    roles: raw?.roles ?? [],
-    tier: raw?.tier ?? raw?.membership_tier ?? 'free',
-    active: raw?.active ?? raw?.is_active ?? false,
+    address: requiredString(raw.address ?? raw.wallet_address, 'member address'),
+    roles: raw.roles ?? [],
+    tier: raw.tier ?? raw.membership_tier ?? 'free',
+    active: raw.active ?? raw.is_active ?? false,
   }
 }
 
 function mapResource(raw: any): Resource {
   return {
-    id: raw?.id ?? '',
-    title: raw?.title ?? raw?.name ?? '',
-    description: raw?.description,
-    minTier: raw?.minTier ?? raw?.min_tier ?? 'free',
-    roles: raw?.roles,
+    id: raw.id,
+    title: raw.title ?? raw.name ?? raw.id,
+    description: raw.description,
+    minTier: raw.minTier ?? raw.min_tier,
+    roles: raw.roles,
   }
 }
 
 function mapPolicy(raw: any): AccessPolicy {
   return {
-    resourceId: raw?.resourceId ?? raw?.resource_id ?? '',
-    minTier: raw?.minTier ?? raw?.min_tier ?? 'free',
-    roles: raw?.roles ?? [],
+    resourceId: requiredString(raw.resourceId ?? raw.resource_id, 'policy resourceId'),
+    minTier: raw.minTier ?? raw.min_tier,
+    roles: raw.roles,
   }
 }
 
