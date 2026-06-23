@@ -77,24 +77,71 @@ function SiwePrompt() {
   )
 }
 
+/** Shown when the guard detects an expired session — prompts re-authentication. */
+function ExpiredSessionPrompt() {
+  const { signIn, isSigningIn, error } = useSiweAuth()
+  return (
+    <div id="admin-guard-expired-prompt" className="rounded-md border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 p-6 max-w-md space-y-4">
+      <div>
+        <h2 className="text-base font-semibold">Session Expired</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Your admin session has expired. Sign the message again to continue —
+          no gas required.
+        </p>
+      </div>
+
+      {error && (
+        <p id="admin-guard-expired-error" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+
+      <Button
+        id="admin-guard-reauth-btn"
+        onClick={signIn}
+        disabled={isSigningIn}
+        className="w-full sm:w-auto"
+      >
+        {isSigningIn ? (
+          <span className="flex items-center gap-1.5">
+            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+            </svg>
+            Signing…
+          </span>
+        ) : (
+          'Re-authenticate'
+        )}
+      </Button>
+    </div>
+  )
+}
+
 export default function AdminGuard({ children }: { children: ReactNode }) {
   const { address } = useAccount()
-  const { isAuthenticated, authSession } = useSiweAuth()
+  const { sessionStatus, authSession } = useSiweAuth()
 
   const { data: session, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['session', address],
     queryFn: () => getApi(address, authSession?.token).getSession(),
-    enabled: !!address && isAuthenticated,
+    enabled: !!address && sessionStatus === 'authenticated',
     retry: 1
   })
 
-  if (!address) {
+  if (sessionStatus === 'disconnected') {
     return <AccessDenied reason="Admin area requires wallet connection." />
   }
 
-  if (!isAuthenticated) {
+  if (sessionStatus === 'expired') {
+    return <ExpiredSessionPrompt />
+  }
+
+  if (sessionStatus === 'connected' || sessionStatus === 'authenticating') {
     return <SiwePrompt />
   }
+
+  // sessionStatus === 'authenticated' from here
 
   if (isLoading) {
     return <LoadingState message="Checking admin access…" />

@@ -11,6 +11,13 @@
  *                    work in mock mode without MetaMask.
  *  - siweLogout()  — no-op that resolves immediately.
  *
+ * Session simulation:
+ *  Set NEXT_PUBLIC_MOCK_SESSION_STATE to control the simulated auth boundary:
+ *    "expired"         — siweVerify returns an already-expired token; admin
+ *                        mutations (assignRole/updatePolicy) throw a 401 ApiError
+ *    "unauthenticated" — siweVerify always throws, simulating a backend rejection
+ *    (default)         — normal mock behaviour (instant auth, 1-hour token)
+ *
  * The mock MOCK_ADMIN_ADDRESS constant seeds a pre-authenticated admin for
  * convenience so you can simulate both unauthenticated and admin states:
  *   NEXT_PUBLIC_MOCK_ADMIN_ADDRESS=0xYourAddress
@@ -28,6 +35,13 @@ import {
   Session,
   SiweAuthSession,
 } from './types'
+import { ApiError } from './errors'
+
+/** Read once at module load so it is stable across renders. */
+const MOCK_SESSION_STATE =
+  (typeof process !== 'undefined' &&
+    process.env.NEXT_PUBLIC_MOCK_SESSION_STATE) ||
+  ''
 
 const community: Community = {
   id: 'guildpass-demo',
@@ -79,6 +93,15 @@ function randomHex(): string {
   ).join('')
 }
 
+/** Throw a mock 401 ApiError — mirrors what the live API throws on expired tokens. */
+function throwMockUnauthorized(): never {
+  throw new ApiError({
+    status: 401,
+    code: 'unauthorized',
+    safeMessage: 'Session expired. Please sign in again.',
+  })
+}
+
 export class MockAccessApi implements AccessApi {
   constructor(private readonly address?: string) { }
 
@@ -125,15 +148,19 @@ export class MockAccessApi implements AccessApi {
     return policies
   }
 
-  // ── Mutations (token is accepted but not validated in mock mode) ───────────
+  // ── Mutations ──────────────────────────────────────────────────────────────
+  // When NEXT_PUBLIC_MOCK_SESSION_STATE=expired, mutations throw a 401 to let
+  // developers verify that the admin pages surface the re-auth banner.
 
   async assignRole(address: string, role: Role): Promise<void> {
+    if (MOCK_SESSION_STATE === 'expired') throwMockUnauthorized()
     const data = ensureAddress(address)
     if (!data) return
     if (!data.roles.includes(role)) data.roles.push(role)
   }
 
   async updatePolicy(policy: AccessPolicy): Promise<void> {
+    if (MOCK_SESSION_STATE === 'expired') throwMockUnauthorized()
     const result = validatePolicy(policy)
 
     if (!result.valid) {
@@ -157,11 +184,22 @@ export class MockAccessApi implements AccessApi {
 
   /**
    * Mock SIWE verification — skips actual signature checking.
-   * Returns a session token that expires in 1 hour. The token string is
-   * deliberately fake ("mock-jwt-…") so it cannot be confused with a real token.
+   *
+   * - Default:          Returns a session token expiring in 1 hour.
+   * - expired mode:     Returns an already-expired token (1 ms in the past) so
+   *                     the provider immediately marks the session as expired.
+   * - unauthenticated:  Throws a 401 ApiError to simulate backend rejection.
    */
   async siweVerify(_message: string, _signature: string): Promise<SiweAuthSession> {
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+    if (MOCK_SESSION_STATE === 'unauthenticated') {
+      throwMockUnauthorized()
+    }
+
+    const expiresAt =
+      MOCK_SESSION_STATE === 'expired'
+        ? new Date(Date.now() - 1).toISOString()   // already expired
+        : new Date(Date.now() + 60 * 60 * 1000).toISOString()
+
     return {
       isAuthenticated: true,
       token: `mock-jwt-${randomHex()}`,

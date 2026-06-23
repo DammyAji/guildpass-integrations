@@ -3,19 +3,17 @@
 import { useState } from 'react'
 import { useAccount } from 'wagmi'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-
 import { getApi, type AccessPolicy } from '@/lib/api'
 import { AuthError } from '@/lib/api/live'
-import { useState } from 'react'
 import { FeatureGate } from '@/components/feature-gate'
 import { features } from '@/lib/features'
-import { LoadingState, ErrorState, EmptyState, DeniedState, safeErrorMessage } from '@/components/ui/api-states'
 import { applyOptimisticPolicy } from '@/lib/api/optimistic'
 import { AdminGuard } from '@/components/admin-guard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+  DeniedState,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -40,17 +38,17 @@ function SessionExpiredBanner() {
         title="Admin session expired"
         message="Your admin session has expired."
         actions={
-      <Button
-        type="button"
-        id="session-reauth-btn-policies"
-        size="sm"
-        variant="outline"
-        onClick={signIn}
-        disabled={isSigningIn}
-        className="ml-4 shrink-0"
-      >
-        {isSigningIn ? 'Signing…' : 'Re-authenticate'}
-      </Button>
+          <Button
+            type="button"
+            id="session-reauth-btn-policies"
+            size="sm"
+            variant="outline"
+            onClick={signIn}
+            disabled={isSigningIn}
+            className="ml-4 shrink-0"
+          >
+            {isSigningIn ? 'Signing…' : 'Re-authenticate'}
+          </Button>
         }
       />
     </div>
@@ -59,7 +57,7 @@ function SessionExpiredBanner() {
 
 export default function PoliciesPage() {
   const { address } = useAccount()
-  const { authSession } = useSiweAuth()
+  const { authSession, markExpired } = useSiweAuth()
   const qc = useQueryClient()
 
   const [sessionExpired, setSessionExpired] = useState(false)
@@ -122,6 +120,7 @@ export default function PoliciesPage() {
 
       if (err instanceof AuthError) {
         setSessionExpired(true)
+        markExpired()
       }
 
       if (policy?.resourceId) {
@@ -162,112 +161,113 @@ export default function PoliciesPage() {
   }
 
   return (
-    <AdminGuard>
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold">Access Policies</h1>
+    <FeatureGate enabled={features.adminPolicies} name="Access Policies">
+      <AdminGuard>
+        <div className="space-y-4">
+          <h1 className="text-2xl font-semibold">Access Policies</h1>
 
-        {sessionExpired && <SessionExpiredBanner />}
+          {sessionExpired && <SessionExpiredBanner />}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Resources</CardTitle>
-          </CardHeader>
+          <Card>
+            <CardHeader>
+              <CardTitle>Resources</CardTitle>
+            </CardHeader>
 
-          <CardContent className="space-y-2">
-            {isLoading ? (
-              <LoadingState message="Loading policies…" />
-            ) : isError ? (
-              <ErrorState
-                title="Failed to load policies"
-                message={safeErrorMessage(error)}
-                onRetry={() => refetch()}
-              />
-            ) : !policies?.length ? (
-              <EmptyState title="No resources configured" message="No access policies have been configured yet." />
-            ) : (
-              policies.map((policy) => {
-                const errors = formErrors[policy.resourceId]
+            <CardContent className="space-y-2">
+              {isLoading ? (
+                <LoadingState message="Loading policies…" />
+              ) : isError ? (
+                <ErrorState
+                  title="Failed to load policies"
+                  message={safeErrorMessage(error)}
+                  onRetry={() => refetch()}
+                />
+              ) : !policies?.length ? (
+                <EmptyState title="No resources configured" message="No access policies have been configured yet." />
+              ) : (
+                policies.map((policy) => {
+                  const errors = formErrors[policy.resourceId]
 
-                return (
-                  <div key={policy.resourceId} className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <div className="flex w-40 items-center gap-2 text-sm">
-                        <span>{policy.resourceId}</span>
-                        {pendingPolicyId === policy.resourceId && (
-                          <Badge variant="warning">Saving</Badge>
-                        )}
+                  return (
+                    <div key={policy.resourceId} className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <div className="flex w-40 items-center gap-2 text-sm">
+                          <span>{policy.resourceId}</span>
+                          {pendingPolicyId === policy.resourceId && (
+                            <Badge variant="warning">Saving</Badge>
+                          )}
+                        </div>
+
+                        <select
+                          id={`policy-tier-${policy.resourceId}`}
+                          className="h-9 rounded-md border px-2 text-sm"
+                          value={policy.minTier ?? 'free'}
+                          onChange={(e) =>
+                            savePolicy({
+                              ...policy,
+                              minTier: e.target.value as AccessPolicy['minTier'],
+                            })
+                          }
+                          disabled={Boolean(pendingPolicyId)}
+                        >
+                          <option value="free">free</option>
+                          <option value="standard">standard</option>
+                          <option value="pro">pro</option>
+                        </select>
+
+                        <Button
+                          type="button"
+                          id={`policy-save-${policy.resourceId}`}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => savePolicy({ ...policy })}
+                          disabled={Boolean(pendingPolicyId)}
+                        >
+                          {pendingPolicyId === policy.resourceId ? 'Saving…' : 'Save'}
+                        </Button>
                       </div>
 
-                      <select
-                        id={`policy-tier-${policy.resourceId}`}
-                        className="h-9 rounded-md border px-2 text-sm"
-                        value={policy.minTier ?? 'free'}
-                        onChange={(e) =>
-                          savePolicy({
-                            ...policy,
-                            minTier: e.target.value as AccessPolicy['minTier'],
-                          })
-                        }
-                        disabled={Boolean(pendingPolicyId)}
-                      >
-                        <option value="free">free</option>
-                        <option value="standard">standard</option>
-                        <option value="pro">pro</option>
-                      </select>
-
-                      <Button
-                        type="button"
-                        id={`policy-save-${policy.resourceId}`}
-                        variant="outline"
-                        size="sm"
-                        onClick={() => savePolicy({ ...policy })}
-                        disabled={Boolean(pendingPolicyId)}
-                      >
-                        {pendingPolicyId === policy.resourceId ? 'Saving…' : 'Save'}
-                      </Button>
+                      {errors &&
+                        Object.values(errors)
+                          .filter(Boolean)
+                          .map((message) => (
+                            <div
+                              key={message}
+                              className="text-sm text-destructive"
+                              role="alert"
+                            >
+                              {message}
+                            </div>
+                          ))}
                     </div>
+                  )
+                })
+              )}
 
-                    {errors &&
-                      Object.values(errors)
-                        .filter(Boolean)
-                        .map((message) => (
-                          <div
-                            key={message}
-                            className="text-sm text-destructive"
-                            role="alert"
-                          >
-                            {message}
-                          </div>
-                        ))}
-                  </div>
-                )
-              })
-            )}
+              {successMessage && (
+                <div
+                  className="text-sm text-green-700 dark:text-green-400"
+                  role="status"
+                >
+                  {successMessage}
+                </div>
+              )}
 
-            {successMessage && (
-              <div
-                className="text-sm text-green-700 dark:text-green-400"
-                role="status"
-              >
-                {successMessage}
-              </div>
-            )}
+              {rollbackMessage && (
+                <div className="text-sm text-destructive" role="alert">
+                  {rollbackMessage}
+                </div>
+              )}
 
-            {rollbackMessage && (
-              <div className="text-sm text-destructive" role="alert">
-                {rollbackMessage}
-              </div>
-            )}
-
-            {mutateError && (
-              <ErrorState
-                title="Failed to save policy"
-                message={safeErrorMessage(mutateErrorValue)}
-              />
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              {mutateError && (
+                <ErrorState
+                  title="Failed to save policy"
+                  message={safeErrorMessage(mutateErrorValue)}
+                />
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </AdminGuard>
     </FeatureGate>
   )

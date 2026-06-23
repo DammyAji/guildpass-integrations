@@ -49,7 +49,7 @@ function SessionExpiredBanner() {
 
 export default function MembersPage() {
   const { address } = useAccount()
-  const { authSession } = useSiweAuth()
+  const { authSession, markExpired } = useSiweAuth()
   const qc = useQueryClient()
   const [sessionExpired, setSessionExpired] = useState(false)
 
@@ -99,6 +99,7 @@ export default function MembersPage() {
       setRollbackMessage(`Change reverted: ${safeErrorMessage(err)}`)
       if (err instanceof AuthError) {
         setSessionExpired(true)
+        markExpired()
       }
     },
     onSettled: () => {

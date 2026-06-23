@@ -8,7 +8,7 @@ export function ConnectButton() {
   const { isConnected, address } = useAccount()
   const { connect, isPending: isConnecting } = useConnect()
   const { disconnect } = useDisconnect()
-  const { isAuthenticated, isSigningIn, signIn, logout, error } = useSiweAuth()
+  const { sessionStatus, isSigningIn, signIn, logout, error } = useSiweAuth()
 
   if (!isConnected) {
     return (
@@ -25,7 +25,7 @@ export function ConnectButton() {
 
   const short = `${address?.slice(0, 6)}…${address?.slice(-4)}`
 
-  if (isAuthenticated) {
+  if (sessionStatus === 'authenticated') {
     return (
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">{short}</span>
@@ -45,6 +45,46 @@ export function ConnectButton() {
     )
   }
 
+  if (sessionStatus === 'expired') {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">{short}</span>
+          <span
+            id="siwe-expired-badge"
+            className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+          >
+            Session Expired
+          </span>
+          <Button
+            id="wallet-reauth-btn"
+            size="sm"
+            onClick={signIn}
+            disabled={isSigningIn}
+            title="Your session expired — sign again to re-authenticate."
+          >
+            {isSigningIn ? 'Signing…' : 'Re-authenticate'}
+          </Button>
+          <Button
+            id="wallet-disconnect-btn"
+            variant="ghost"
+            size="sm"
+            onClick={() => disconnect()}
+            className="text-muted-foreground"
+          >
+            Disconnect
+          </Button>
+        </div>
+        {error && (
+          <p id="wallet-signin-error" className="text-xs text-destructive max-w-xs text-right">
+            {error}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  // sessionStatus === 'connected' | 'authenticating'
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-2">

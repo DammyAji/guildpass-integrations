@@ -28,7 +28,7 @@ import { WagmiProvider, createConfig, http, injected, useSignMessage, useAccount
 import { mainnet, base, sepolia } from 'wagmi/chains'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { getApi } from '@/lib/api'
-import { SiweAuthSession } from '@/lib/api/types'
+import { AdminSessionStatus, SiweAuthSession } from '@/lib/api/types'
 import { clearAuthSession, loadAuthSession, storeAuthSession } from '@/lib/session'
 import { accessKeys } from '@/lib/query'
 
@@ -50,6 +50,8 @@ export interface SiweAuthContextValue {
   /** The authenticated session, or null if the user has not signed in. */
   authSession: SiweAuthSession | null
   isAuthenticated: boolean
+  /** Granular status of the admin session. */
+  sessionStatus: AdminSessionStatus
   /** True while a signature request is in-flight. */
   isSigningIn: boolean
   /** Human-readable error from the most recent signIn attempt, if any. */
@@ -58,15 +60,19 @@ export interface SiweAuthContextValue {
   signIn: () => Promise<void>
   /** Clear the session and disconnect the wallet. */
   logout: () => Promise<void>
+  /** Mark the current session as expired (e.g. after a 401 from the backend). */
+  markExpired: () => void
 }
 
 const SiweAuthContext = createContext<SiweAuthContextValue>({
   authSession: null,
   isAuthenticated: false,
+  sessionStatus: 'disconnected',
   isSigningIn: false,
   error: null,
   signIn: async () => {},
   logout: async () => {},
+  markExpired: () => {},
 })
 
 export function useSiweAuth(): SiweAuthContextValue {
@@ -84,15 +90,18 @@ function SiweAuthProvider({ children }: PropsWithChildren) {
   const [authSession, setAuthSession] = useState<SiweAuthSession | null>(null)
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isExpired, setIsExpired] = useState(false)
 
   // Restore persisted session on mount / address change
   useEffect(() => {
     const stored = loadAuthSession()
     if (stored && stored.address === address) {
       setAuthSession(stored)
+      setIsExpired(false)
     } else {
       // Address changed (e.g. different MetaMask account) — clear stale session
       setAuthSession(null)
+      setIsExpired(false)
     }
   }, [address])
 
@@ -143,6 +152,7 @@ function SiweAuthProvider({ children }: PropsWithChildren) {
       const session = await api.siweVerify(siweMessage, signature)
       storeAuthSession(session)
       setAuthSession(session)
+      setIsExpired(false)
       // Invalidate session queries so role-aware UI refreshes
       await queryClient.invalidateQueries({ queryKey: ['session'] })
     } catch (err: unknown) {
@@ -168,19 +178,40 @@ function SiweAuthProvider({ children }: PropsWithChildren) {
     }
     clearAuthSession()
     setAuthSession(null)
+    setIsExpired(false)
     setError(null)
     disconnect()
     queryClient.removeQueries({ queryKey: ['session'] })
     queryClient.removeQueries({ queryKey: accessKeys.all })
   }, [authSession, address, disconnect, queryClient])
 
+  /** Called by admin mutation error handlers when the backend returns 401. */
+  const markExpired = useCallback(() => {
+    clearAuthSession()
+    setAuthSession(null)
+    setIsExpired(true)
+  }, [])
+
+  // Derive the granular session status from existing state
+  const sessionStatus: AdminSessionStatus = !address
+    ? 'disconnected'
+    : isSigningIn
+    ? 'authenticating'
+    : isExpired
+    ? 'expired'
+    : authSession
+    ? 'authenticated'
+    : 'connected'
+
   const value: SiweAuthContextValue = {
     authSession,
     isAuthenticated: !!authSession,
+    sessionStatus,
     isSigningIn,
     error,
     signIn,
     logout,
+    markExpired,
   }
 
   return <SiweAuthContext.Provider value={value}>{children}</SiweAuthContext.Provider>

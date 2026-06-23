@@ -91,6 +91,23 @@ export interface AccessDecision {
 // ── Client-side State Types ──────────────────────────────────────────────────
 
 /**
+ * Distinct states of the admin authentication session.
+ *
+ * - disconnected   — no wallet connected
+ * - connected      — wallet connected, but SIWE sign-in not yet performed
+ * - authenticating — SIWE signing flow is in-flight
+ * - authenticated  — valid, non-expired session token is held
+ * - expired        — a session was held but the token has since expired (or
+ *                    the backend rejected it with 401); re-auth is required
+ */
+export type AdminSessionStatus =
+  | 'disconnected'
+  | 'connected'
+  | 'authenticating'
+  | 'authenticated'
+  | 'expired'
+
+/**
  * Union of authenticated / unauthenticated states for the SIWE context.
  */
 export type SiweAuthState =
