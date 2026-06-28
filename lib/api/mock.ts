@@ -34,6 +34,7 @@ import {
   Role,
   Session,
   SiweAuthSession,
+  WalletVerification,
   WebhookEventLog,
 } from './types'
 import { ApiError } from './errors'
@@ -259,5 +260,4 @@ export class MockAccessApi implements AccessApi {
       checkedAt: new Date().toISOString(),
     }
   }
-}
 }
