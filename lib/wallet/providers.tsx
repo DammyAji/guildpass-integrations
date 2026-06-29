@@ -24,8 +24,8 @@ import {
   useEffect,
   useState,
 } from 'react'
-import { WagmiProvider, createConfig, http, injected, useSignMessage, useAccount, useDisconnect } from 'wagmi'
-import { mainnet, base, sepolia } from 'wagmi/chains'
+import { WagmiProvider, createConfig, useSignMessage, useAccount, useDisconnect } from 'wagmi'
+import { walletConfig } from '@/lib/wallet/config'
 import { QueryClient, QueryClientProvider, useQueryClient, QueryCache } from '@tanstack/react-query'
 import { getApi } from '@/lib/api'
 import { config } from '@/lib/config'
@@ -34,17 +34,9 @@ import { clearAuthSession, loadAuthSession, storeAuthSession } from '@/lib/sessi
 import { isApiError } from '@/lib/api/errors'
 import { accessKeys, queryKeys } from '@/lib/query'
 
-// ── Wagmi config (unchanged) ──────────────────────────────────────────────────
+// ── Wagmi config ─────────────────────────────────────────────────────────────
 
-const wagmiConfig = createConfig({
-  chains: [mainnet, base, sepolia],
-  connectors: [injected()],
-  transports: {
-    [mainnet.id]: http(),
-    [base.id]: http(),
-    [sepolia.id]: http(),
-  },
-})
+const wagmiConfig = createConfig(walletConfig)
 
 // ── SIWE Auth Context ─────────────────────────────────────────────────────────
 

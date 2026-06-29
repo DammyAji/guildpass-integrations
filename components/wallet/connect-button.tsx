@@ -1,13 +1,14 @@
 'use client'
 
-import { useAccount, useConnect, useDisconnect, injected } from 'wagmi'
+import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { Button } from '@/components/ui/button'
 import { useSiweAuth } from '@/lib/wallet/providers'
 import { AddressText } from './address-text'
 
 export function ConnectButton() {
   const { isConnected, address } = useAccount()
-  const { connect, isPending: isConnecting } = useConnect()
+  const { connect, connectors, isPending: isConnecting } = useConnect()
+  const connector = connectors[0]
   const { disconnect } = useDisconnect()
   const { sessionStatus, isSigningIn, signIn, logout, error } = useSiweAuth()
 
@@ -16,10 +17,10 @@ export function ConnectButton() {
       <Button
         id="wallet-connect-btn"
         size="sm"
-        onClick={() => connect({ connector: injected() })}
-        disabled={isConnecting}
+        onClick={() => connector && connect({ connector })}
+        disabled={isConnecting || !connector}
       >
-        {isConnecting ? 'Connecting…' : 'Connect Wallet'}
+        {isConnecting ? 'Connecting…' : connector ? 'Connect Wallet' : 'Wallet Unavailable'}
       </Button>
     )
   }
