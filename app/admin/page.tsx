@@ -1,39 +1,71 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import {
-  WebhookEventLog,
-  WebhookEventStatus,
-  WebhookEventType,
-} from "@/lib/api/types";
-import { MockAccessApi } from "@/lib/api/mock"; // Swappable depending on context instantiation
-import { queryKeys } from "@/lib/query";
-import { EmptyState } from "@/components/ui/api-states";
-import { Select } from "@/components/ui/select";
-import { AddressText } from "@/components/wallet/address-text";
+import { useState } from 'react'
+import { useAccount } from 'wagmi'
+import { useQuery } from '@tanstack/react-query'
+import { getApi } from '@/lib/api'
+import { isApiError } from '@/lib/api/errors'
+import { queryKeys } from '@/lib/query'
+import { EmptyState, ErrorState, LoadingState, safeErrorMessage } from "@/components/ui/api-states"
+import { AddressText } from '@/components/wallet/address-text'
+import { AdminGuard } from '@/components/admin-guard'
+import { useSiweAuth } from '@/lib/wallet/providers'
+import { Button } from '@/components/ui/button'
 
-export default function AdminEventsPage() {
+function SessionExpiredState() {
+  const { signIn, isSigningIn } = useSiweAuth()
+
+  return (
+    <EmptyState
+      title="Admin session expired"
+      message="Your admin session has expired. Re-authenticate with your wallet to load webhook logs again."
+      actions={
+        <Button
+          id="webhook-events-reauth-btn"
+          size="sm"
+          variant="outline"
+          onClick={signIn}
+          disabled={isSigningIn}
+        >
+          {isSigningIn ? 'Signing…' : 'Re-authenticate'}
+        </Button>
+      }
+    />
+  )
+}
+
+function WebhookLogsContent() {
+  const { address } = useAccount()
+  const { authSession, markExpired, sessionStatus } = useSiweAuth()
+  const [sessionExpired, setSessionExpired] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [typeFilter, setTypeFilter] = useState<string>('all')
+
   const {
     data: events = [],
-    isLoading: loading,
+    isLoading,
     isError,
-    error: queryError,
+    error,
+    refetch,
   } = useQuery({
-    queryKey: queryKeys.webhookEvents.all,
+    queryKey: [...queryKeys.webhookEvents.all, address, authSession?.token ?? 'anonymous'],
     queryFn: async () => {
-      const api = new MockAccessApi();
-      return api.listWebhookEvents();
+      try {
+        return await getApi(address, authSession?.token).listWebhookEvents()
+      } catch (err) {
+        if (isApiError(err) && err.code === 'unauthorized') {
+          setSessionExpired(true)
+          markExpired()
+        }
+        throw err
+      }
+    },
+    enabled: !!address && sessionStatus === 'authenticated',
+    retry: (failureCount, err) => {
+      if (isApiError(err) && err.code === 'unauthorized') return false
+      return failureCount < 1
     },
   });
-
-  const error = isError
-    ? (queryError as Error).message || "Failed to load webhook events feed."
-    : null;
-
-  // Filtering States
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
 
   const filteredEvents = events.filter((evt) => {
     const matchStatus = statusFilter === "all" || evt.status === statusFilter;
@@ -63,7 +95,6 @@ export default function AdminEventsPage() {
 
       <hr className="border-border" />
 
-      {/* Control Filter Bar */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex flex-col gap-1">
           <label
@@ -106,11 +137,16 @@ export default function AdminEventsPage() {
         </div>
       </div>
 
-      {/* Main Data Render Window */}
-      {loading ? (
-        <div className="py-10 text-center text-sm text-muted-foreground animate-pulse">
-          Ingesting latest system events...
-        </div>
+      {sessionExpired ? (
+        <SessionExpiredState />
+      ) : isLoading ? (
+        <LoadingState message="Ingesting latest system events..." />
+      ) : isError ? (
+        <ErrorState
+          title="Error loading log feed"
+          message={safeErrorMessage(error)}
+          onRetry={() => refetch()}
+        />
       ) : filteredEvents.length === 0 ? (
         <EmptyState
           title="No event records found"
@@ -174,4 +210,12 @@ export default function AdminEventsPage() {
       )}
     </div>
   );
+}
+
+export default function AdminEventsPage() {
+  return (
+    <AdminGuard>
+      <WebhookLogsContent />
+    </AdminGuard>
+  )
 }
