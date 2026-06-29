@@ -1,127 +1,39 @@
-'use client'
+'use client';
 
-import { useAccount, useConnect, useDisconnect, injected } from 'wagmi'
-import { Button } from '@/components/ui/button'
-import { useSiweAuth } from '@/lib/wallet/providers'
-import { AddressText } from './address-text'
+import React from 'react';
+import { useAccount, useDisconnect } from 'wagmi';
+import { useSiweAuth } from '@/lib/wallet/providers';
 
 export function ConnectButton() {
-  const { isConnected, address } = useAccount()
-  const { connect, isPending: isConnecting } = useConnect()
-  const { disconnect } = useDisconnect()
-  const { sessionStatus, isSigningIn, signIn, logout, error } = useSiweAuth()
+  const { isConnected, address } = useAccount();
+  const { disconnect } = useDisconnect();
+  const { status, timeLeft, login } = useSiweAuth();
 
   if (!isConnected) {
     return (
-      <Button
-        id="wallet-connect-btn"
-        size="sm"
-        onClick={() => connect({ connector: injected() })}
-        disabled={isConnecting}
-      >
-        {isConnecting ? 'Connecting…' : 'Connect Wallet'}
-      </Button>
-    )
+      <button className="px-4 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-50 dark:text-zinc-900 rounded-md">
+        Connect Wallet
+      </button>
+    );
   }
 
-  if (sessionStatus === 'authenticated') {
-    return (
-      <div className="flex items-center gap-2">
-        <AddressText address={address} className="text-xs text-muted-foreground" />
-        <span
-          id="siwe-authenticated-badge"
-          className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-        >
-          <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Signed In
-        </span>
-        <Button id="wallet-signout-btn" variant="secondary" size="sm" onClick={logout}>
-          Sign Out
-        </Button>
-      </div>
-    )
-  }
-
-  if (sessionStatus === 'expired') {
-    return (
-      <div className="flex flex-col items-end gap-1">
-        <div className="flex items-center gap-2">
-          <AddressText address={address} className="text-xs text-muted-foreground" />
-          <span
-            id="siwe-expired-badge"
-            className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
-          >
-            Session Expired
-          </span>
-          <Button
-            id="wallet-reauth-btn"
-            size="sm"
-            onClick={signIn}
-            disabled={isSigningIn}
-            title="Your session expired — sign again to re-authenticate."
-          >
-            {isSigningIn ? 'Signing…' : 'Re-authenticate'}
-          </Button>
-          <Button
-            id="wallet-disconnect-btn"
-            variant="ghost"
-            size="sm"
-            onClick={() => disconnect()}
-            className="text-muted-foreground"
-          >
-            Disconnect
-          </Button>
-        </div>
-        {error && (
-          <p id="wallet-signin-error" className="text-xs text-destructive max-w-xs text-right">
-            {error}
-          </p>
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex flex-col items-end text-xs">
+        <span className="font-mono text-zinc-500">{address?.slice(0, 6)}...{address?.slice(-4)}</span>
+        {status === 'authenticated' && (
+          <span className="text-emerald-600 dark:text-emerald-400 font-medium">Session: {Math.floor(timeLeft / 60)}m {timeLeft % 60}s</span>
+        )}
+        {status === 'expiring' && (
+          <span className="text-amber-600 dark:text-amber-400 font-bold animate-pulse">Expires in {timeLeft}s</span>
+        )}
+        {status === 'unauthenticated' && (
+          <button onClick={login} className="text-amber-500 hover:underline font-medium">Sign In Required</button>
         )}
       </div>
-    )
-  }
-
-  // sessionStatus === 'connected' | 'authenticating'
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex items-center gap-2">
-        <AddressText address={address} className="text-xs text-muted-foreground" />
-        <Button
-          id="wallet-signin-btn"
-          size="sm"
-          onClick={signIn}
-          disabled={isSigningIn}
-          title="Sign a one-time message to prove wallet ownership — no gas required."
-        >
-          {isSigningIn ? (
-            <span className="flex items-center gap-1.5">
-              <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-              </svg>
-              Signing…
-            </span>
-          ) : (
-            'Sign In'
-          )}
-        </Button>
-        <Button
-          id="wallet-disconnect-btn"
-          variant="ghost"
-          size="sm"
-          onClick={() => disconnect()}
-          className="text-muted-foreground"
-        >
-          Disconnect
-        </Button>
-      </div>
-      {error && (
-        <p id="wallet-signin-error" className="text-xs text-destructive max-w-xs text-right">
-          {error}
-        </p>
-      )}
+      <button onClick={() => disconnect()} className="px-3 py-1.5 text-xs font-medium border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 rounded">
+        Disconnect
+      </button>
     </div>
-  )
+  );
 }
