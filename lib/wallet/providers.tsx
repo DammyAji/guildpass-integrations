@@ -1,13 +1,45 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useAccount, useSignMessage, useDisconnect } from 'wagmi';
+import {
+  createContext,
+  PropsWithChildren,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from 'react'
+import { WagmiProvider, createConfig, useSignMessage, useAccount, useDisconnect } from 'wagmi'
+import { walletConfig } from '@/lib/wallet/config'
+import { QueryClient, QueryClientProvider, useQueryClient, QueryCache } from '@tanstack/react-query'
+import { getApi } from '@/lib/api'
+import { config } from '@/lib/config'
+import { SiweAuthSession, AdminSessionStatus } from '@/lib/api/types'
+import { clearAuthSession, loadAuthSession, storeAuthSession } from '@/lib/session'
+import { isApiError } from '@/lib/api/errors'
+import { accessKeys, queryKeys } from '@/lib/query'
 
-interface SiweSession {
-  token: string;
-  address: string;
-  expiresAt: string;
+// ── Wagmi config ─────────────────────────────────────────────────────────────
+
+const wagmiConfig = createConfig(walletConfig)
+
+// ── SIWE Auth Context ─────────────────────────────────────────────────────────
+
+export interface SiweAuthContextValue {
+  /** The authenticated session, or null if the user has not signed in. */
+  authSession: SiweAuthSession | null
+  isAuthenticated: boolean
+  /** Granular status of the admin session. */
+  sessionStatus: AdminSessionStatus
+  /** True while a signature request is in-flight. */
+  isSigningIn: boolean
+  /** Human-readable error from the most recent signIn attempt, if any. */
+  error: string | null
+  /** Trigger the EIP-4361 sign-in flow for the currently connected address. */
+  signIn: () => Promise<void>
+  /** Clear the session and disconnect the wallet. */
+  logout: () => Promise<void>
+  /** Mark the current session as expired (e.g. after a 401 from the backend). */
+  markExpired: () => void
 }
 
 interface SiweAuthContextType {
