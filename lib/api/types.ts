@@ -317,6 +317,11 @@ export interface BackendSession {
  * Read-only member and resource queries.
  * No SIWE token is required for these operations.
  */
+export interface PaginatedMembers {
+  members: MemberRow[]
+  nextCursor?: string
+}
+
 export interface MemberAccessApi {
   // ── Read-only (no auth token required) ──────────────────────────────────
   getSession(): Promise<Session>
@@ -324,7 +329,7 @@ export interface MemberAccessApi {
   getMembership(address: string): Promise<Membership | null>
   verifyWallet(address: string): Promise<WalletVerification>
   getProfile(address: string): Promise<MemberProfile | null>
-  listMembers(): Promise<MemberRow[]>
+  listMembers(params?: { cursor?: string; limit?: number; filter?: string }): Promise<MemberRow[] | PaginatedMembers>
   listResources(): Promise<Resource[]>
   listPolicies(): Promise<AccessPolicy[]>
   getResource(id: string): Promise<Resource | null>
