@@ -59,6 +59,7 @@ async function createIntegrationClient() {
 
   let clientModule: IntegrationClientModule
   try {
+    // @ts-ignore
     clientModule = (await import('@guildpass/integration-client')) as IntegrationClientModule
   } catch (error: any) {
     if (error.code === 'MODULE_NOT_FOUND') {

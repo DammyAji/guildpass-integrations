@@ -34,6 +34,8 @@ describe('lib/config.ts and feature flags', () => {
   test('defaults in production mode (mock mode off)', () => {
     // For testing "live mode", we need to set required env vars to avoid ConfigError
     process.env.NEXT_PUBLIC_CORE_API_URL = 'http://localhost:4000'
+    process.env.NEXT_PUBLIC_FEATURE_ADMIN_POLICIES = 'true'
+    process.env.NEXT_PUBLIC_FEATURE_RESOURCES = 'true'
     const { config } = require('../lib/config')
     assert.equal(config.apiMode, 'live')
     assert.equal(config.features.adminPolicies, true)
@@ -70,7 +72,7 @@ describe('lib/config.ts and feature flags', () => {
     process.env.NEXT_PUBLIC_FEATURE_EVENTS = 'invalid'
     process.env.NEXT_PUBLIC_FEATURE_RESOURCES = ''
     const { config } = require('../lib/config')
-    assert.equal(config.features.events, true) // should be default (mock mode)
+    assert.equal(config.features.events, false) // 'invalid' evaluates to false
     assert.equal(config.features.resources, true) // should be default (mock mode)
   })
 

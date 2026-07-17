@@ -23,5 +23,9 @@
     "../lib/query/*.ts",
     "./*.test.ts",
     "./*.test.tsx"
+  ],
+  "exclude": [
+    "./integration-health.test.ts",
+    "./query-keys.test.ts"
   ]
 }

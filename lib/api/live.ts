@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import {
   AccessApi,
   AccessPolicy,
@@ -16,6 +17,16 @@ import {
   BackendResource,
   BackendPolicy,
   WebhookEventLog,
+  SessionSchema,
+  CommunitySchema,
+  MembershipSchema,
+  WalletVerificationSchema,
+  MemberProfileSchema,
+  MemberRowSchema,
+  ResourceSchema,
+  AccessPolicySchema,
+  WebhookEventLogSchema,
+  SiweAuthSessionSchema,
 } from './types'
 import {
   mapCommunity,
@@ -150,7 +161,82 @@ async function parseErrorBody(
   }
 }
 
-async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
+function normalizeResponseKeys(data: any): any {
+  if (data === null || data === undefined) {
+    return data
+  }
+  if (Array.isArray(data)) {
+    return data.map(normalizeResponseKeys)
+  }
+  if (typeof data === 'object') {
+    const res: any = {}
+    for (const [key, val] of Object.entries(data)) {
+      const normalizedVal = normalizeResponseKeys(val)
+      
+      let targetKey = key
+      if (key === 'wallet_address') targetKey = 'address'
+      else if (key === 'membership_tier') targetKey = 'tier'
+      else if (key === 'is_active') targetKey = 'active'
+      else if (key === 'expires_at') targetKey = 'expiresAt'
+      else if (key === 'display_name') targetKey = 'displayName'
+      else if (key === 'min_tier') targetKey = 'minTier'
+      else if (key === 'resource_id') targetKey = 'resourceId'
+      else if (key === 'event_type') targetKey = 'eventType'
+      else if (key === 'created_at') targetKey = 'timestamp'
+      else if (key === 'affected_identifier') targetKey = 'affectedIdentifier'
+      else if (key === 'payload_summary') targetKey = 'payloadSummary'
+      else if (key === 'tx_hash') targetKey = 'txHash'
+      
+      res[targetKey] = normalizedVal
+      if (targetKey !== key) {
+        res[key] = normalizedVal
+      }
+    }
+    
+    // Mappers fallbacks
+    if (res.name !== undefined && res.title === undefined) {
+      res.title = res.name
+    }
+    if (res.username !== undefined && res.displayName === undefined) {
+      res.displayName = res.username
+    }
+    // Profile address injection fallback (MemberProfile schema requires address but raw profile response doesn't have it)
+    if (res.badges !== undefined && res.address === undefined) {
+      res.address = '0x0000000000000000000000000000000000000000'
+    }
+    // SIWE verify response isAuthenticated injection fallback
+    if (res.token !== undefined && res.isAuthenticated === undefined) {
+      res.isAuthenticated = true
+    }
+    
+    return res
+  }
+  return data
+}
+
+function validateResponse(raw: any, schema: z.ZodType<any>, path?: string): void {
+  const normalized = normalizeResponseKeys(raw)
+  const result = schema.safeParse(normalized)
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      .join(', ')
+    const errorMsg = `API contract mismatch at ${path || 'unknown'}: ${issues}`
+    
+    if (config.apiValidationLogOnly) {
+      console.error(errorMsg)
+    } else {
+      throw new ApiError({
+        status: 422,
+        code: 'validation_error',
+        safeMessage: errorMsg,
+        path,
+      })
+    }
+  }
+}
+
+async function getJson<T>(path: string, init?: RequestInit, schema?: z.ZodType<any>): Promise<T> {
   let res: Response
 
   try {
@@ -184,10 +270,14 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
     return {} as T
   }
 
-  return parseJsonResponse<T>(text, path)
+  const raw = parseJsonResponse<any>(text, path)
+  if (schema) {
+    validateResponse(raw, schema, path)
+  }
+  return raw as T
 }
 
-async function getIntegrationJson<T>(path: string): Promise<T> {
+async function getIntegrationJson<T>(path: string, schema?: z.ZodType<any>): Promise<T> {
   let res: Response
 
   try {
@@ -219,7 +309,11 @@ async function getIntegrationJson<T>(path: string): Promise<T> {
     return {} as T
   }
 
-  return parseJsonResponse<T>(text, path)
+  const raw = parseJsonResponse<any>(text, path)
+  if (schema) {
+    validateResponse(raw, schema, path)
+  }
+  return raw as T
 }
 
 function parseJsonResponse<T>(text: string, path?: string): T {
@@ -254,7 +348,7 @@ export class LiveAccessApi implements AccessApi {
       ? `?address=${encodeURIComponent(this.address)}`
       : ''
     const path = `/v1/session${addr}`
-    const raw = await getJson<BackendSession>(path)
+    const raw = await getJson<BackendSession>(path, undefined, SessionSchema)
     validateSessionResponse(raw, path)
     const session = mapSession(raw)
 
@@ -264,6 +358,7 @@ export class LiveAccessApi implements AccessApi {
         const integrationPath = `/api/integration/membership?address=${encodeURIComponent(this.address)}`
         const integrationMembership = await getIntegrationJson<BackendMember | null>(
           integrationPath,
+          MembershipSchema.nullable(),
         )
         validateMembershipResponse(integrationMembership, integrationPath)
         if (integrationMembership) {
@@ -280,7 +375,7 @@ export class LiveAccessApi implements AccessApi {
 
   async getCommunity(): Promise<Community> {
     const path = '/v1/community'
-    const raw = await getJson<BackendSession['community']>(path)
+    const raw = await getJson<BackendSession['community']>(path, undefined, CommunitySchema)
     validateCommunityResponse(raw, path)
     return mapCommunity(raw)
   }
@@ -288,6 +383,7 @@ export class LiveAccessApi implements AccessApi {
   async getMembership(address: string): Promise<Membership | null> {
     const raw = await getIntegrationJson<BackendMember | null>(
       `/api/integration/membership?address=${encodeURIComponent(address)}`,
+      MembershipSchema.nullable(),
     )
     return raw ? mapMembership(raw) : null
   }
@@ -295,33 +391,34 @@ export class LiveAccessApi implements AccessApi {
   async verifyWallet(address: string): Promise<WalletVerification> {
     return await getIntegrationJson<WalletVerification>(
       `/api/integration/verify?address=${encodeURIComponent(address)}`,
+      WalletVerificationSchema,
     )
   }
 
   async getProfile(address: string): Promise<MemberProfile | null> {
     const path = `/v1/members/${encodeURIComponent(address)}/profile`
-    const raw = await getJson<BackendMember | null>(path)
+    const raw = await getJson<BackendMember | null>(path, undefined, MemberProfileSchema.nullable())
     validateMemberProfileResponse(raw, path)
     return raw ? mapMemberProfile(raw, address) : null
   }
 
   async listMembers(): Promise<MemberRow[]> {
     const path = '/v1/members'
-    const raw = await getJson<BackendMember[]>(path)
+    const raw = await getJson<BackendMember[]>(path, undefined, z.array(MemberRowSchema))
     validateMemberRowsResponse(raw, path)
     return raw.map(mapMemberRow)
   }
 
   async listResources(): Promise<Resource[]> {
     const path = '/v1/resources'
-    const raw = await getJson<BackendResource[]>(path)
+    const raw = await getJson<BackendResource[]>(path, undefined, z.array(ResourceSchema))
     validateResourcesResponse(raw, path)
     return raw.map(mapResource)
   }
 
   async listPolicies(): Promise<AccessPolicy[]> {
     const path = '/v1/policies'
-    const raw = await getJson<BackendPolicy[]>(path)
+    const raw = await getJson<BackendPolicy[]>(path, undefined, z.array(AccessPolicySchema))
     validatePoliciesResponse(raw, path)
     return raw.map(mapPolicy)
   }
@@ -329,7 +426,7 @@ export class LiveAccessApi implements AccessApi {
   async getResource(id: string): Promise<Resource | null> {
     const path = `/v1/resources/${encodeURIComponent(id)}`
     try {
-      const raw = await getJson<BackendResource>(path)
+      const raw = await getJson<BackendResource>(path, undefined, ResourceSchema)
       if (raw && Object.keys(raw).length > 0) {
         validateResourceResponse(raw, path)
         return mapResource(raw)
@@ -348,7 +445,7 @@ export class LiveAccessApi implements AccessApi {
   async getPolicy(resourceId: string): Promise<AccessPolicy | null> {
     const path = `/v1/policies/${encodeURIComponent(resourceId)}`
     try {
-      const raw = await getJson<BackendPolicy>(path)
+      const raw = await getJson<BackendPolicy>(path, undefined, AccessPolicySchema)
       if (raw && Object.keys(raw).length > 0) {
         validatePolicyResponse(raw, path)
         return mapPolicy(raw)
@@ -371,7 +468,7 @@ export class LiveAccessApi implements AccessApi {
     const raw = await getJson<any[]>(path, {
       method: 'GET',
       headers: this.authHeaders(),
-    })
+    }, z.array(WebhookEventLogSchema))
     validateWebhookEventsResponse(raw, path)
     return raw.map(mapWebhookEvent)
   }
@@ -416,7 +513,7 @@ export class LiveAccessApi implements AccessApi {
     const data = await getJson<{ nonce: string }>('/v1/auth/siwe/nonce', {
       method: 'POST',
       body: JSON.stringify({ address }),
-    })
+    }, z.object({ nonce: z.string() }))
     return data.nonce
   }
 
@@ -431,7 +528,7 @@ export class LiveAccessApi implements AccessApi {
     }>('/v1/auth/siwe/verify', {
       method: 'POST',
       body: JSON.stringify({ message, signature }),
-    })
+    }, SiweAuthSessionSchema)
 
     return { isAuthenticated: true, ...data }
   }

@@ -40,6 +40,8 @@ export interface AppConfig {
   siwe: SiweConfig
   /** Feature flag booleans */
   features: FeatureFlags
+  /** Whether to validate API responses in log-only mode */
+  apiValidationLogOnly: boolean
 }
 
 // ── Error type ────────────────────────────────────────────────────────────────
@@ -135,4 +137,7 @@ export const config: AppConfig = Object.freeze({
   apiUrl,
   siwe: Object.freeze(siwe),
   features: Object.freeze(features),
+  get apiValidationLogOnly() {
+    return flag('NEXT_PUBLIC_API_VALIDATION_LOG_ONLY', false)
+  },
 })

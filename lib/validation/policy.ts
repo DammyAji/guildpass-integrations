@@ -1,4 +1,4 @@
-import type { AccessPolicy, MembershipTier, Role } from '@/lib/api'
+import type { AccessPolicy, MembershipTier, Role } from '@/lib/api/types'
 
 const ALLOWED_TIERS: MembershipTier[] = ['free', 'standard', 'pro']
 const ALLOWED_ROLES: Role[] = ['member', 'moderator', 'admin']

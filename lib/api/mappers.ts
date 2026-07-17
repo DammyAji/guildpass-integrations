@@ -77,14 +77,17 @@ export function mapMemberRow(raw: any): MemberRow {
 // ── Resource ─────────────────────────────────────────────────────────────────
 
 export function mapResource(raw: any): Resource {
-  return {
+  const res: Resource = {
     id: raw.id ?? '',
     title: raw.title ?? raw.name ?? 'Untitled',
     description: raw.description,
     minTier: raw.minTier ?? raw.min_tier,
     roles: raw.roles ?? [],
-    content: raw.content,
   }
+  if (raw.content !== undefined) {
+    res.content = raw.content
+  }
+  return res
 }
 
 // ── Access Policy ────────────────────────────────────────────────────────────

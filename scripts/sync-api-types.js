@@ -237,6 +237,52 @@ function getTsType(propSchema) {
   }
 }
 
+function getZodType(propSchema) {
+  if (propSchema.$ref) {
+    const refName = propSchema.$ref.split('/').pop();
+    return `${refName}Schema`;
+  }
+
+  if (propSchema.enum) {
+    if (propSchema.enum.length === 1 && propSchema.enum[0] === true) {
+      return `z.literal(true)`;
+    }
+    const vals = propSchema.enum
+      .map((val) => (typeof val === 'string' ? `'${val}'` : val))
+      .join(', ');
+    return `z.enum([${vals}])`;
+  }
+
+  if (propSchema.additionalProperties) {
+    return 'z.record(z.unknown())';
+  }
+
+  switch (propSchema.type) {
+    case 'string':
+      return 'z.string()';
+    case 'boolean':
+      return 'z.boolean()';
+    case 'integer':
+    case 'number':
+      return 'z.number()';
+    case 'array':
+      return `z.array(${getZodType(propSchema.items)})`;
+    case 'object':
+      if (propSchema.properties) {
+        const props = Object.entries(propSchema.properties).map(([name, schema]) => {
+          const isRequired =
+            propSchema.required && propSchema.required.includes(name);
+          const zType = getZodType(schema);
+          return `${name}: ${zType}${isRequired ? '' : '.optional()'}`;
+        });
+        return `z.object({ ${props.join(', ')} })`;
+      }
+      return 'z.record(z.unknown())';
+    default:
+      return 'z.any()';
+  }
+}
+
 // Schemas whose canonical definition lives in STATIC_SUFFIX rather than openapi.json.
 const STATIC_SCHEMA_NAMES = new Set([
   'ApiErrorBody',
@@ -259,28 +305,49 @@ function generateTypes() {
  *   npm run sync-types
  */
 
+import { z } from 'zod';
+
 `;
 
   for (const [schemaName, schemaVal] of Object.entries(schemasObj)) {
-    if (STATIC_SCHEMA_NAMES.has(schemaName)) {
-      continue;
+    if (!STATIC_SCHEMA_NAMES.has(schemaName)) {
+      if (schemaVal.enum) {
+        const enumVals = schemaVal.enum
+          .map((v) => (typeof v === 'string' ? `'${v}'` : v))
+          .join(' | ');
+        output += `export type ${schemaName} = ${enumVals}\n\n`;
+      } else if (schemaVal.type === 'object') {
+        output += `export interface ${schemaName} {\n`;
+        const props = schemaVal.properties || {};
+        for (const [propName, propVal] of Object.entries(props)) {
+          const isRequired =
+            schemaVal.required && schemaVal.required.includes(propName);
+          const tsType = getTsType(propVal);
+          output += `  ${propName}${isRequired ? '' : '?'}: ${tsType}\n`;
+        }
+        output += `}\n\n`;
+      }
     }
 
     if (schemaVal.enum) {
-      const enumVals = schemaVal.enum
-        .map((v) => (typeof v === 'string' ? `'${v}'` : v))
-        .join(' | ');
-      output += `export type ${schemaName} = ${enumVals}\n\n`;
+      if (schemaVal.enum.length === 1 && schemaVal.enum[0] === true) {
+        output += `export const ${schemaName}Schema = z.literal(true)\n\n`;
+      } else {
+        const enumVals = schemaVal.enum
+          .map((v) => (typeof v === 'string' ? `'${v}'` : v))
+          .join(', ');
+        output += `export const ${schemaName}Schema = z.enum([${enumVals}])\n\n`;
+      }
     } else if (schemaVal.type === 'object') {
-      output += `export interface ${schemaName} {\n`;
+      output += `export const ${schemaName}Schema = z.object({\n`;
       const props = schemaVal.properties || {};
       for (const [propName, propVal] of Object.entries(props)) {
         const isRequired =
           schemaVal.required && schemaVal.required.includes(propName);
-        const tsType = getTsType(propVal);
-        output += `  ${propName}${isRequired ? '' : '?'}: ${tsType}\n`;
+        const zType = getZodType(propVal);
+        output += `  ${propName}: ${zType}${isRequired ? '' : '.optional()'},\n`;
       }
-      output += `}\n\n`;
+      output += `})\n\n`;
     }
   }
 
